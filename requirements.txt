@@ -2,3 +2,4 @@ streamlit
 pdfplumber
 pandas
 scikit-learn
+matplotlib
