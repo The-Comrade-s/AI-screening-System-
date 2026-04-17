@@ -20,13 +20,13 @@ st.markdown("""
 .stButton>button {
     background-color: #4CAF50;
     color: white;
-    border-radius: 8px;
+    border-radius: 6px;
     height: 3em;
     width: 100%;
-    font-size: 16px;
+    font-size: 20px;
 }
 .stSidebar {
-    background-color: #111827;
+    background-color: #113327;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -165,7 +165,7 @@ elif page == "Upload":
 
 # ---------------- SCREENING ----------------
 elif page == "Screening":
-    st.subheader("AI Screening Engine")
+    st.subheader("AI Screening System")
 
     job_desc = st.text_area("Enter Job Description")
 
