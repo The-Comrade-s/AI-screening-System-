@@ -18,7 +18,7 @@ st.markdown("""
     color: white;
 }
 .stButton>button {
-    background-color: #4CAF50;
+    background-color: #4CDF50;
     color: white;
     border-radius: 6px;
     height: 3em;
@@ -26,12 +26,12 @@ st.markdown("""
     font-size: 20px;
 }
 .stSidebar {
-    background-color: #113327;
+    background-color: #003327;
 }
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<h1 style='text-align:center; color:#4CAF50;'>AI HR Recruitment System</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align:center; color:#4CAF50;'>AI Resume Screening System</h1>", unsafe_allow_html=True)
 
 # ---------------- DATABASE ----------------
 conn = sqlite3.connect("system.db", check_same_thread=False)
