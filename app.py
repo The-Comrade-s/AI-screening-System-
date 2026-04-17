@@ -67,23 +67,22 @@ def extract_text(file):
             text += page.extract_text() or ""
     return text
 
-# ---------------- AI HR FEEDBACK (NEW) ----------------
-def hr_feedback(score, resume_text):
-    if score > 75:
-        return "Excellent candidate. Strong technical alignment and highly recommended for interview."
-    elif score > 50:
-        return "Good candidate with relevant skills. Consider for second-stage interview."
-    elif score > 30:
-        return "Average match. Some relevant skills but gaps exist."
-    else:
-        return "Weak candidate. Not recommended due to low skill alignment."
-
 def detect_fake(resume):
     if len(resume.split()) < 50:
         return "⚠️ Too short / suspicious"
     if "lorem" in resume.lower():
         return "⚠️ Fake-like content detected"
     return "✅ Genuine"
+
+def hr_feedback(score):
+    if score > 75:
+        return "Excellent candidate — Strong match for role."
+    elif score > 50:
+        return "Good candidate — suitable for interview."
+    elif score > 30:
+        return "Average match — consider with caution."
+    else:
+        return "Weak candidate — not recommended."
 
 # ---------------- SESSION ----------------
 if "login" not in st.session_state:
@@ -122,8 +121,7 @@ if not st.session_state.login:
     st.stop()
 
 # ---------------- SIDEBAR ----------------
-st.sidebar.title("Navigation")
-page = st.sidebar.radio("", ["Dashboard", "Upload", "Screening", "Analytics", "Database"])
+page = st.sidebar.radio("Navigation", ["Dashboard", "Upload", "Screening", "Analytics", "Database"])
 
 # ---------------- DASHBOARD ----------------
 if page == "Dashboard":
@@ -137,7 +135,7 @@ if page == "Dashboard":
     rejected = c.fetchone()[0]
 
     col1, col2, col3 = st.columns(3)
-    col1.metric("Total", total)
+    col1.metric("Total Candidates", total)
     col2.metric("Hired", hired)
     col3.metric("Rejected", rejected)
 
@@ -157,8 +155,10 @@ elif page == "Upload":
         if exists:
             st.error("Duplicate resume detected ❌")
         else:
-            c.execute("INSERT INTO candidates VALUES (?,?,?,?)",
-                      (file.name, text, "pending", file_hash))
+            c.execute(
+                "INSERT INTO candidates VALUES (?,?,?,?)",
+                (file.name, text, "pending", file_hash)
+            )
             conn.commit()
             st.success("Uploaded successfully ✔")
             st.rerun()
@@ -193,9 +193,8 @@ elif page == "Screening":
                     "Name": names[i],
                     "Score": round(scores[i]*100, 2),
                     "Hash": hashes[i],
-                    "Resume": resumes[i],
                     "Status": detect_fake(resumes[i]),
-                    "Feedback": hr_feedback(scores[i]*100, resumes[i])
+                    "Feedback": hr_feedback(scores[i]*100)
                 })
 
             df = pd.DataFrame(results).sort_values(by="Score", ascending=False)
@@ -208,45 +207,50 @@ elif page == "Screening":
             for i, row in df.iterrows():
                 with st.expander(f"{row['Name']} - {row['Score']}%"):
 
-                    st.write("🧠 HR Feedback:")
                     st.info(row["Feedback"])
-
-                    st.write("📄 Resume Status:")
-                    st.write(row["Status"])
 
                     col1, col2 = st.columns(2)
 
+                    # ---------------- FIXED HIRE ----------------
                     if col1.button(f"Hire {row['Name']}", key=f"h{i}"):
-                        c.execute("UPDATE candidates SET status='employed' WHERE file_hash=?",
-                                  (row["Hash"],))
+
+                        c.execute("""
+                            UPDATE candidates
+                            SET status='employed'
+                            WHERE file_hash=?
+                        """, (row["Hash"],))
+
                         conn.commit()
                         st.success("Hired ✔")
                         st.rerun()
 
+                    # ---------------- FIXED REJECT ----------------
                     if col2.button(f"Reject {row['Name']}", key=f"r{i}"):
-                        c.execute("UPDATE candidates SET status='rejected' WHERE file_hash=?",
-                                  (row["Hash"],))
+
+                        c.execute("""
+                            UPDATE candidates
+                            SET status='rejected'
+                            WHERE file_hash=?
+                        """, (row["Hash"],))
+
                         conn.commit()
                         st.error("Rejected ❌")
                         st.rerun()
 
-# ---------------- ANALYTICS (NEW) ----------------
+# ---------------- ANALYTICS ----------------
 elif page == "Analytics":
-    st.subheader("📊 Hiring Analytics")
+    st.subheader("Hiring Analytics")
 
     c.execute("SELECT status FROM candidates")
     data = c.fetchall()
 
     if data:
         df = pd.DataFrame(data, columns=["Status"])
-
         counts = df["Status"].value_counts()
 
         fig, ax = plt.subplots()
         counts.plot(kind="bar", ax=ax)
-
         ax.set_title("Candidate Status Distribution")
-        ax.set_ylabel("Count")
 
         st.pyplot(fig)
     else:
