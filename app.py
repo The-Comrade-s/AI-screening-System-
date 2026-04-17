@@ -3,6 +3,7 @@ import sqlite3
 import pdfplumber
 import pandas as pd
 import hashlib
+import matplotlib.pyplot as plt
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -66,17 +67,16 @@ def extract_text(file):
             text += page.extract_text() or ""
     return text
 
-def generate_reason(resume, job_desc):
-    resume_words = set(resume.lower().split())
-    job_words = set(job_desc.lower().split())
-
-    matched = resume_words & job_words
-    missing = job_words - resume_words
-
-    return f"""
-✔ Matched skills: {', '.join(list(matched)[:6])}
-❌ Missing skills: {', '.join(list(missing)[:6])}
-"""
+# ---------------- AI HR FEEDBACK (NEW) ----------------
+def hr_feedback(score, resume_text):
+    if score > 75:
+        return "Excellent candidate. Strong technical alignment and highly recommended for interview."
+    elif score > 50:
+        return "Good candidate with relevant skills. Consider for second-stage interview."
+    elif score > 30:
+        return "Average match. Some relevant skills but gaps exist."
+    else:
+        return "Weak candidate. Not recommended due to low skill alignment."
 
 def detect_fake(resume):
     if len(resume.split()) < 50:
@@ -96,23 +96,18 @@ if not st.session_state.login:
     auth = st.radio("Select Option", ["Login", "Register"])
 
     if auth == "Register":
-        st.subheader("Create Account")
-
         u = st.text_input("Username")
         p = st.text_input("Password", type="password")
 
         if st.button("Register"):
-            if u and p:
-                try:
-                    c.execute("INSERT INTO users VALUES (?,?)", (u, p))
-                    conn.commit()
-                    st.success("Account created successfully!")
-                except:
-                    st.error("Username already exists")
+            try:
+                c.execute("INSERT INTO users VALUES (?,?)", (u, p))
+                conn.commit()
+                st.success("Account created!")
+            except:
+                st.error("Username already exists")
 
     else:
-        st.subheader("Login")
-
         u = st.text_input("Username")
         p = st.text_input("Password", type="password")
 
@@ -128,7 +123,7 @@ if not st.session_state.login:
 
 # ---------------- SIDEBAR ----------------
 st.sidebar.title("Navigation")
-page = st.sidebar.radio("", ["Dashboard", "Upload", "Screening", "Database"])
+page = st.sidebar.radio("", ["Dashboard", "Upload", "Screening", "Analytics", "Database"])
 
 # ---------------- DASHBOARD ----------------
 if page == "Dashboard":
@@ -142,15 +137,15 @@ if page == "Dashboard":
     rejected = c.fetchone()[0]
 
     col1, col2, col3 = st.columns(3)
-    col1.metric("👥 Total", total)
-    col2.metric("✅ Hired", hired)
-    col3.metric("❌ Rejected", rejected)
+    col1.metric("Total", total)
+    col2.metric("Hired", hired)
+    col3.metric("Rejected", rejected)
 
 # ---------------- UPLOAD ----------------
 elif page == "Upload":
-    st.subheader("Upload Resume (PDF)")
+    st.subheader("Upload Resume")
 
-    file = st.file_uploader("Choose file", type=["pdf"])
+    file = st.file_uploader("Upload PDF", type=["pdf"])
 
     if file:
         file_hash = get_file_hash(file)
@@ -175,7 +170,7 @@ elif page == "Screening":
     job_desc = st.text_area("Enter Job Description")
 
     if st.button("Run Screening"):
-        c.execute("SELECT name, resume FROM candidates")
+        c.execute("SELECT name, resume, file_hash FROM candidates")
         data = c.fetchall()
 
         if not data:
@@ -183,6 +178,7 @@ elif page == "Screening":
         else:
             names = [d[0] for d in data]
             resumes = [d[1] for d in data]
+            hashes = [d[2] for d in data]
 
             docs = resumes + [job_desc]
 
@@ -196,8 +192,10 @@ elif page == "Screening":
                 results.append({
                     "Name": names[i],
                     "Score": round(scores[i]*100, 2),
-                    "Reason": generate_reason(resumes[i], job_desc),
-                    "Status": detect_fake(resumes[i])
+                    "Hash": hashes[i],
+                    "Resume": resumes[i],
+                    "Status": detect_fake(resumes[i]),
+                    "Feedback": hr_feedback(scores[i]*100, resumes[i])
                 })
 
             df = pd.DataFrame(results).sort_values(by="Score", ascending=False)
@@ -210,28 +208,53 @@ elif page == "Screening":
             for i, row in df.iterrows():
                 with st.expander(f"{row['Name']} - {row['Score']}%"):
 
-                    st.write(row["Reason"])
+                    st.write("🧠 HR Feedback:")
+                    st.info(row["Feedback"])
+
+                    st.write("📄 Resume Status:")
                     st.write(row["Status"])
 
                     col1, col2 = st.columns(2)
 
                     if col1.button(f"Hire {row['Name']}", key=f"h{i}"):
-                        c.execute("UPDATE candidates SET status='employed' WHERE name=?",
-                                  (row["Name"],))
+                        c.execute("UPDATE candidates SET status='employed' WHERE file_hash=?",
+                                  (row["Hash"],))
                         conn.commit()
                         st.success("Hired ✔")
                         st.rerun()
 
                     if col2.button(f"Reject {row['Name']}", key=f"r{i}"):
-                        c.execute("UPDATE candidates SET status='rejected' WHERE name=?",
-                                  (row["Name"],))
+                        c.execute("UPDATE candidates SET status='rejected' WHERE file_hash=?",
+                                  (row["Hash"],))
                         conn.commit()
                         st.error("Rejected ❌")
                         st.rerun()
 
+# ---------------- ANALYTICS (NEW) ----------------
+elif page == "Analytics":
+    st.subheader("📊 Hiring Analytics")
+
+    c.execute("SELECT status FROM candidates")
+    data = c.fetchall()
+
+    if data:
+        df = pd.DataFrame(data, columns=["Status"])
+
+        counts = df["Status"].value_counts()
+
+        fig, ax = plt.subplots()
+        counts.plot(kind="bar", ax=ax)
+
+        ax.set_title("Candidate Status Distribution")
+        ax.set_ylabel("Count")
+
+        st.pyplot(fig)
+    else:
+        st.warning("No data available")
+
 # ---------------- DATABASE ----------------
 elif page == "Database":
-    st.subheader("Candidate Records")
+    st.subheader("Candidate Database")
 
     c.execute("SELECT name, status FROM candidates")
     data = c.fetchall()
