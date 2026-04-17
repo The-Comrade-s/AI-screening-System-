@@ -2,8 +2,35 @@ import streamlit as st
 import sqlite3
 import pdfplumber
 import pandas as pd
+import hashlib
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+
+# ---------------- PAGE CONFIG ----------------
+st.set_page_config(page_title="AI HR System", layout="wide")
+
+# ---------------- UI STYLE ----------------
+st.markdown("""
+<style>
+.main {
+    background-color: #0e1117;
+    color: white;
+}
+.stButton>button {
+    background-color: #4CAF50;
+    color: white;
+    border-radius: 8px;
+    height: 3em;
+    width: 100%;
+    font-size: 16px;
+}
+.stSidebar {
+    background-color: #111827;
+}
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown("<h1 style='text-align:center; color:#4CAF50;'>AI HR Recruitment System</h1>", unsafe_allow_html=True)
 
 # ---------------- DATABASE ----------------
 conn = sqlite3.connect("system.db", check_same_thread=False)
@@ -20,12 +47,18 @@ c.execute("""
 CREATE TABLE IF NOT EXISTS candidates (
     name TEXT,
     resume TEXT,
-    status TEXT
+    status TEXT,
+    file_hash TEXT UNIQUE
 )
 """)
 conn.commit()
 
 # ---------------- FUNCTIONS ----------------
+def get_file_hash(file):
+    file_bytes = file.read()
+    file.seek(0)
+    return hashlib.md5(file_bytes).hexdigest()
+
 def extract_text(file):
     text = ""
     with pdfplumber.open(file) as pdf:
@@ -41,13 +74,13 @@ def generate_reason(resume, job_desc):
     missing = job_words - resume_words
 
     return f"""
-✔ Matched skills: {', '.join(list(matched)[:5])}
-❌ Missing skills: {', '.join(list(missing)[:5])}
+✔ Matched skills: {', '.join(list(matched)[:6])}
+❌ Missing skills: {', '.join(list(missing)[:6])}
 """
 
 def detect_fake(resume):
     if len(resume.split()) < 50:
-        return "⚠️ Too short (Possible fake)"
+        return "⚠️ Too short / suspicious"
     if "lorem" in resume.lower():
         return "⚠️ Fake-like content detected"
     return "✅ Genuine"
@@ -58,40 +91,35 @@ if "login" not in st.session_state:
 
 # ---------------- AUTH ----------------
 if not st.session_state.login:
-    st.title("HR AI System")
+    st.markdown("## HR Access Portal")
 
-    auth = st.radio("Choose Action", ["Login", "Register"])
+    auth = st.radio("Select Option", ["Login", "Register"])
 
-    # REGISTER
     if auth == "Register":
         st.subheader("Create Account")
 
-        new_user = st.text_input("Username")
-        new_pass = st.text_input("Password", type="password")
+        u = st.text_input("Username")
+        p = st.text_input("Password", type="password")
 
         if st.button("Register"):
-            if new_user and new_pass:
+            if u and p:
                 try:
-                    c.execute("INSERT INTO users VALUES (?,?)", (new_user, new_pass))
+                    c.execute("INSERT INTO users VALUES (?,?)", (u, p))
                     conn.commit()
-                    st.success("Account created! Now login.")
+                    st.success("Account created successfully!")
                 except:
                     st.error("Username already exists")
-            else:
-                st.warning("Fill all fields")
 
-    # LOGIN
     else:
         st.subheader("Login")
 
-        user = st.text_input("Username")
-        pw = st.text_input("Password", type="password")
+        u = st.text_input("Username")
+        p = st.text_input("Password", type="password")
 
         if st.button("Login"):
-            c.execute("SELECT * FROM users WHERE username=? AND password=?", (user, pw))
+            c.execute("SELECT * FROM users WHERE username=? AND password=?", (u, p))
             if c.fetchone():
                 st.session_state.login = True
-                st.success("Login successful")
                 st.rerun()
             else:
                 st.error("Invalid credentials")
@@ -100,13 +128,10 @@ if not st.session_state.login:
 
 # ---------------- SIDEBAR ----------------
 st.sidebar.title("Navigation")
-page = st.sidebar.radio("", ["Dashboard", "Upload Resume", "Screening", "Database"])
+page = st.sidebar.radio("", ["Dashboard", "Upload", "Screening", "Database"])
 
 # ---------------- DASHBOARD ----------------
 if page == "Dashboard":
-    st.title("Dashboard")
-
-    conn.commit()
     c.execute("SELECT COUNT(*) FROM candidates")
     total = c.fetchone()[0]
 
@@ -117,26 +142,35 @@ if page == "Dashboard":
     rejected = c.fetchone()[0]
 
     col1, col2, col3 = st.columns(3)
-    col1.metric("Total Candidates", total)
-    col2.metric("Hired", hired)
-    col3.metric("Rejected", rejected)
+    col1.metric("👥 Total", total)
+    col2.metric("✅ Hired", hired)
+    col3.metric("❌ Rejected", rejected)
 
 # ---------------- UPLOAD ----------------
-elif page == "Upload Resume":
-    st.title("Upload Resume")
+elif page == "Upload":
+    st.subheader("Upload Resume (PDF)")
 
-    file = st.file_uploader("Upload PDF", type=["pdf"])
+    file = st.file_uploader("Choose file", type=["pdf"])
 
     if file:
+        file_hash = get_file_hash(file)
         text = extract_text(file)
-        c.execute("INSERT INTO candidates VALUES (?,?,?)", (file.name, text, "pending"))
-        conn.commit()
-        st.success("Uploaded successfully!")
-        st.rerun()
+
+        c.execute("SELECT * FROM candidates WHERE file_hash=?", (file_hash,))
+        exists = c.fetchone()
+
+        if exists:
+            st.error("Duplicate resume detected ❌")
+        else:
+            c.execute("INSERT INTO candidates VALUES (?,?,?,?)",
+                      (file.name, text, "pending", file_hash))
+            conn.commit()
+            st.success("Uploaded successfully ✔")
+            st.rerun()
 
 # ---------------- SCREENING ----------------
 elif page == "Screening":
-    st.title("AI Screening System")
+    st.subheader("AI Screening Engine")
 
     job_desc = st.text_area("Enter Job Description")
 
@@ -145,7 +179,7 @@ elif page == "Screening":
         data = c.fetchall()
 
         if not data:
-            st.warning("No resumes uploaded")
+            st.warning("No resumes found")
         else:
             names = [d[0] for d in data]
             resumes = [d[1] for d in data]
@@ -161,15 +195,14 @@ elif page == "Screening":
             for i in range(len(names)):
                 results.append({
                     "Name": names[i],
-                    "Score": round(scores[i]*100,2),
-                    "Resume": resumes[i],
+                    "Score": round(scores[i]*100, 2),
                     "Reason": generate_reason(resumes[i], job_desc),
                     "Status": detect_fake(resumes[i])
                 })
 
             df = pd.DataFrame(results).sort_values(by="Score", ascending=False)
 
-            st.dataframe(df[["Name","Score","Status"]])
+            st.dataframe(df[["Name", "Score", "Status"]])
 
             best = df.iloc[0]
             st.success(f"🏆 Best Candidate: {best['Name']} ({best['Score']}%)")
@@ -183,30 +216,26 @@ elif page == "Screening":
                     col1, col2 = st.columns(2)
 
                     if col1.button(f"Hire {row['Name']}", key=f"h{i}"):
-                        c.execute("UPDATE candidates SET status='employed' WHERE name=?", (row["Name"],))
+                        c.execute("UPDATE candidates SET status='employed' WHERE name=?",
+                                  (row["Name"],))
                         conn.commit()
-                        st.success("Hired successfully")
+                        st.success("Hired ✔")
                         st.rerun()
 
                     if col2.button(f"Reject {row['Name']}", key=f"r{i}"):
-                        c.execute("UPDATE candidates SET status='rejected' WHERE name=?", (row["Name"],))
+                        c.execute("UPDATE candidates SET status='rejected' WHERE name=?",
+                                  (row["Name"],))
                         conn.commit()
-                        st.warning("Rejected successfully")
+                        st.error("Rejected ❌")
                         st.rerun()
 
 # ---------------- DATABASE ----------------
 elif page == "Database":
-    st.title("Candidate Database")
+    st.subheader("Candidate Records")
 
-    search = st.text_input("Search candidate")
-
-    conn.commit()
-    c.execute("SELECT * FROM candidates")
+    c.execute("SELECT name, status FROM candidates")
     data = c.fetchall()
 
-    df = pd.DataFrame(data, columns=["Name","Resume","Status"])
-
-    if search:
-        df = df[df["Name"].str.contains(search, case=False)]
+    df = pd.DataFrame(data, columns=["Name", "Status"])
 
     st.dataframe(df)
