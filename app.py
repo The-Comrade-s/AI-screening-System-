@@ -26,7 +26,7 @@ st.markdown("""
     font-size: 20px;
 }
 .stSidebar {
-    background-color: #003327;
+    background-color: #F2F2F2;
 }
 </style>
 """, unsafe_allow_html=True)
