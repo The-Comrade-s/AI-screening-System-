@@ -3,3 +3,6 @@ pdfplumber
 pandas
 scikit-learn
 matplotlib
+python-docx
+pytesseract
+Pillow
