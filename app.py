@@ -34,8 +34,8 @@ except ImportError:
 
 # ─── Page config ────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="HireAI – HR Recruitment",
-    page_icon="🚀",
+    page_title="MY AI – HR Recruitment",
+    page_icon="🤖",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -51,7 +51,7 @@ html, body, [class*="css"] {
     color: #E6EDF3 !important;
 }
 .stApp { background-color: #0D1117 !important; }
-#MainMenu, footer, header { visibility: hidden; }
+#MainMenu, footer { visibility: hidden; }
 .block-container { padding: 2rem 2.5rem !important; max-width: 1200px; }
 
 section[data-testid="stSidebar"] {
